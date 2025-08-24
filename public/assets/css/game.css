@@ -31,21 +31,23 @@ body::before {
 }
 
 .container {
-    background: rgba(255, 255, 255, 0.1);
-    backdrop-filter: blur(20px);
-    border-radius: 24px;
-    padding: 30px;
-    box-shadow:
-        0 8px 32px rgba(0, 0, 0, 0.1),
-        0 0 0 1px rgba(255, 255, 255, 0.1),
-        inset 0 1px 0 rgba(255, 255, 255, 0.2);
-    width: 100%;
-    max-width: 400px;
-    text-align: center;
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    position: relative;
-    animation: slideUp 0.8s ease-out;
+  background: rgba(11, 18, 32, 0.55);           /* más oscuro (evita “bloque blanco”) */
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  border-radius: 24px;
+  padding: 30px;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.35),
+    0 0 0 1px rgba(255, 255, 255, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  width: 100%;
+  max-width: 400px;
+  text-align: center;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  position: relative;
+  animation: slideUp 0.8s ease-out;
 }
+
 
 @keyframes slideUp {
     from {
@@ -103,17 +105,23 @@ label {
 
 input[type="text"],
 input[type="number"] {
-    width: 100%;
-    padding: 15px 20px;
-    border: none;
-    border-radius: 16px;
-    background: rgba(255, 255, 255, 0.15);
-    backdrop-filter: blur(10px);
-    color: #fff;
-    font-size: 1rem;
-    transition: all 0.3s ease;
-    border: 1px solid rgba(255, 255, 255, 0.2);
+  width: 100%;
+  padding: 15px 20px;
+  border: none;
+  border-radius: 16px;
+  background-color: rgba(255, 255, 255, 0.12) !important;
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  color: #e5e7eb;                /* gris claro legible */
+  -webkit-text-fill-color: #e5e7eb;  /* iOS Safari */
+  font-size: 1rem;
+  transition: all 0.3s ease;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  appearance: none;
+  -webkit-appearance: none;
+  caret-color: #ffffff;
 }
+
 
 input[type="text"]:focus,
 input[type="number"]:focus {
@@ -185,20 +193,21 @@ input::placeholder {
 }
 
 .custom-select-options {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    right: 0;
-    background: rgba(255, 255, 255, 0.95);
-    backdrop-filter: blur(20px);
-    border-radius: 16px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-    border: 1px solid rgba(255, 255, 255, 0.3);
-    z-index: 1000;
-    max-height: 0;
-    overflow: hidden;
-    transition: all 0.3s ease;
-    margin-top: 8px;
+  position: absolute;
+  top: 100%;
+  left: 0; right: 0;
+  background: rgba(17, 24, 39, 0.98);   /* oscuro */
+  color: #e5e7eb;
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  z-index: 1000;
+  max-height: 0;
+  overflow: hidden;
+  transition: all 0.3s ease;
+  margin-top: 8px;
 }
 
 .custom-select-options.show {
@@ -221,25 +230,25 @@ input::placeholder {
 }
 
 .custom-select-option {
-    padding: 15px 20px;
-    color: #2d3436;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    font-weight: 500;
-    display: flex;
-    align-items: center;
-    gap: 10px;
+  padding: 15px 20px;
+  color: #e5e7eb;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .custom-select-option:hover {
-    background: rgba(78, 205, 196, 0.2);
-    color: #2d3436;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
 }
 
 .custom-select-option.selected {
-    background: rgba(78, 205, 196, 0.3);
-    color: #2d3436;
-    font-weight: 700;
+  background: rgba(78, 205, 196, 0.25);
+  color: #eafff7;
+  font-weight: 700;
 }
 
 .custom-select-option:first-child {
@@ -395,14 +404,16 @@ select {
 
 
 .game-card {
-    background: rgba(255, 255, 255, 0.1);
-    backdrop-filter: blur(15px);
-    border-radius: 20px;
-    padding: 25px;
-    margin: 15px 0;
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    animation: cardFlip 0.8s ease-out;
+  background: rgba(11, 18, 32, 0.55);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border-radius: 20px;
+  padding: 25px;
+  margin: 15px 0;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  animation: cardFlip 0.8s ease-out;
 }
+
 
 @keyframes cardFlip {
     0% {
@@ -477,6 +488,11 @@ select {
     animation: float 6s ease-in-out infinite;
     pointer-events: none;
 }
+
+.player-waiting h3,
+.info-hidden h3,
+.role-text { color: #f5f7fb; }
+
 
 @keyframes float {
 
@@ -737,6 +753,8 @@ select {
     .custom-select-trigger {
         padding: 18px 25px;
         font-size: 1.1rem;
+        -webkit-backdrop-filter: blur(10px);
+        backdrop-filter: blur(10px);
     }
 
     .word-display {
