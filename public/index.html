@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>El Impostor</title>
+    <link rel="stylesheet" href="./assets/css/game.css">
+</head>
+
+<body>
+    <div class="floating-icons icon1">🎭</div>
+    <div class="floating-icons icon2">🕵️</div>
+    <div class="floating-icons icon3">🔍</div>
+    <div class="floating-icons icon4">❓</div>
+
+    <div class="container">
+        <h1>El Impostor</h1>
+        <p class="subtitle">¿Podrás descubrir quién es el impostor?</p>
+
+        <!-- Pantalla de login -->
+        <div id="loginScreen" class="screen hidden">
+            <h2 style="color: #fff; margin-bottom: 30px;">¡Bienvenido!</h2>
+            <div class="input-group">
+                <label for="playerNameInput">Tu nombre:</label>
+                <input type="text" id="playerNameInput" placeholder="Escribe tu nombre...">
+            </div>
+            <div class="mode-selection">
+                <button class="btn" onclick="setPlayerName('offline')">Jugar Local</button>
+                <button class="btn btn-secondary" onclick="setPlayerName('online')">Jugar Online</button>
+            </div>
+        </div>
+
+        <!-- Pantalla de lobby online -->
+        <div id="lobbyScreen" class="screen hidden">
+            <h2 style="color: #fff; margin-bottom: 30px;">Modo Online</h2>
+            <div class="lobby-options">
+                <button class="btn" onclick="createRoom()">🏠 Crear Sala</button>
+                <div class="join-room-section">
+                    <div class="input-group">
+                        <label for="roomCodeInput">Código de sala:</label>
+                        <input type="text" id="roomCodeInput" placeholder="ABC123" maxlength="6">
+                    </div>
+                    <button class="btn btn-secondary" onclick="joinRoom()">🔗 Unirse</button>
+                </div>
+            </div>
+            <button class="btn-back" onclick="backToLogin()">← Volver</button>
+        </div>
+
+        <!-- Pantalla de sala de espera -->
+        <div id="waitingRoom" class="screen hidden">
+            <div class="room-info">
+                <h3 style="color: #4ecdc4;">Sala: <span id="roomCodeDisplay"></span></h3>
+                <p id="connectionStatus" class="connection-status">🔴 Desconectado</p>
+            </div>
+
+            <div class="players-waiting">
+                <h4 style="color: #fff; margin-bottom: 15px;">Jugadores en la sala:</h4>
+                <div id="playersInRoom" class="players-list"></div>
+            </div>
+
+            <div id="hostControls" class="host-controls hidden">
+                <div class="input-group">
+                    <label for="onlineCategorySelect">Categoría:</label>
+                    <div class="custom-select" id="onlineCategorySelect" data-name="category">
+                        <div class="custom-select-trigger">
+                            <span>⚽ Fútbol</span>
+                            <div class="custom-select-arrow"></div>
+                        </div>
+                        <div class="custom-select-options"></div>
+                    </div>
+                </div>
+
+                <div class="input-group" id="onlineSubtopicGroup" style="display: none;">
+                    <label for="onlineSubtopicSelect">Subtema:</label>
+                    <div class="custom-select" id="onlineSubtopicSelect" data-name="subtopic">
+                        <div class="custom-select-trigger">
+                            <span>⭐ Leyendas</span>
+                            <div class="custom-select-arrow"></div>
+                        </div>
+                        <div class="custom-select-options"></div>
+                    </div>
+                </div>
+
+                <button id="startGameBtn" class="btn" onclick="startOnlineGame()">🎮 Empezar Juego</button>
+            </div>
+
+
+            <button class="btn-back" onclick="leaveRoom()">← Salir de la sala</button>
+        </div>
+
+        <!-- Pantalla de configuración -->
+        <!-- Pantalla de configuración -->
+        <div id="setup" class="screen hidden">
+            <div class="input-group">
+                <label for="categorySelect">Categoría:</label>
+                <div class="custom-select" id="categorySelect" data-name="category">
+                    <div class="custom-select-trigger">
+                        <span>⚽ Fútbol</span>
+                        <div class="custom-select-arrow"></div>
+                    </div>
+                    <div class="custom-select-options"></div>
+                </div>
+            </div>
+
+            <div class="input-group" id="subtopicGroup" style="display: none;">
+                <label for="subtopicSelect">Subtema:</label>
+                <div class="custom-select" id="subtopicSelect" data-name="subtopic">
+                    <div class="custom-select-trigger">
+                        <span>⭐ Leyendas</span>
+                        <div class="custom-select-arrow"></div>
+                    </div>
+                    <div class="custom-select-options"></div>
+                </div>
+            </div>
+
+            <div class="input-group" id="customWordGroup" style="display: none;">
+                <label for="customWord">Palabra personalizada:</label>
+                <input type="text" id="customWord" placeholder="Escribe tu palabra...">
+            </div>
+
+            <div class="input-group">
+                <label for="playerName">Agregar jugador:</label>
+                <input type="text" id="playerName" placeholder="Nombre del jugador...">
+                <button class="btn btn-secondary" onclick="addPlayer()">Agregar</button>
+            </div>
+
+            <div class="players-list">
+                <div id="playersList"></div>
+            </div>
+            <div id="error" class="error hidden"></div>
+            <button class="btn" onclick="startGame()">Comenzar Juego</button>
+        </div>
+
+
+        <!-- Pantalla del juego -->
+        <div id="game" class="screen hidden">
+            <div class="game-card" id="gameCard">
+                <h3 id="playerNameDisplay"></h3>
+                <div class="role-text" id="roleDisplay"></div>
+                <div id="wordDisplay" class="word-display hidden"></div>
+            </div>
+
+            <button class="btn" id="showRoleBtn" onclick="showPlayerRole()" style="display: none;">Ver Mi Rol</button>
+            <button class="btn" id="hideBtn" onclick="hidePlayerInfo()" style="display: none;">Ocultar</button>
+            <button class="btn" id="nextBtn" onclick="nextPlayer()" style="display: none;">Siguiente Jugador</button>
+            <button class="btn" id="startPlayingBtn" onclick="showVotingScreen()" style="display: none;">¡Empezar a
+                Jugar!</button>
+            <button class="btn btn-secondary" onclick="resetGame()">Nuevo Juego</button>
+        </div>
+
+        <!-- Pantalla de resultado simple -->
+        <div id="simpleVoting" class="screen hidden">
+            <div class="game-card">
+                <h2 style="color: #fff; margin-bottom: 30px;">¿Ganó el impostor?</h2>
+                <div style="display: flex; flex-direction: column; gap: 20px;">
+                    <button class="btn" onclick="impostorWon(true)"
+                        style="background: linear-gradient(135deg, #ff4757 0%, #ee5a52 100%);">
+                        Sí - Ganó el Impostor
+                    </button>
+                    <button class="btn" onclick="impostorWon(false)"
+                        style="background: linear-gradient(135deg, #2ed573 0%, #1dd1a1 100%);">
+                        No - Ganaron los Jugadores
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pantalla de tabla de puntos -->
+        <div id="scoreView" class="screen hidden">
+            <div class="game-card">
+                <h2 style="color: #4ecdc4; margin-bottom: 20px;">📊 Tabla de Puntos</h2>
+                <div class="scoreboard">
+                    <div id="currentScoreTable"></div>
+                </div>
+            </div>
+            <button class="btn" onclick="backToVoting()">Volver a Votar</button>
+        </div>
+
+        <!-- Pantalla de resultados -->
+        <div id="results" class="screen hidden">
+            <div class="game-card">
+                <h2 id="resultTitle" style="color: #fff; margin-bottom: 20px;"></h2>
+                <p id="resultMessage" style="color: rgba(255,255,255,0.8); margin-bottom: 10px;"></p>
+
+                <!-- NUEVO: acá mostramos "El impostor era ..." -->
+                <p id="impostorReveal" style="color: rgba(255,255,255,0.9); font-weight: 600; margin-bottom: 20px;"></p>
+
+                <div class="scoreboard">
+                    <h3 style="color: #4ecdc4; margin-bottom: 15px;">📊 Tabla de Puntos</h3>
+                    <div id="scoreTable"></div>
+                </div>
+            </div>
+            <button class="btn" onclick="newRound()">Nueva Ronda</button>
+            <button id="resetBtnGame" class="btn btn-secondary" onclick="resetGame()">Nuevo Juego</button>
+        </div>
+    </div>
+    <!-- FAB Chat (oculto hasta estar en sala) -->
+    <button id="chatFab" class="chat-fab hidden" onclick="openChat()" aria-label="Abrir chat">💬</button>
+    <!-- Overlay con iframe para el chat -->
+    <div id="chatOverlay" class="chat-overlay hidden" style="display:none" aria-hidden="true">
+        <div class="chat-frame-wrap">
+            <button class="chat-overlay-close" onclick="closeChatOverlay()" aria-label="Cerrar chat">×</button>
+            <iframe id="chatFrame" src="about:blank" allow="clipboard-write; autoplay"
+                referrerpolicy="no-referrer"></iframe>
+        </div>
+    </div>
+    <script src="/socket.io/socket.io.js"></script>
+    <script type="module" src="/assets/js/app.js"></script>
+</body>
+
+</html>

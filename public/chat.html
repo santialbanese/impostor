@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+    <title>Chat • El Impostor</title>
+    <link rel="stylesheet" href="./assets/css/chat.css" />
+</head>
+
+<body>
+    <div class="shell" id="app">
+        <header>
+            <div class="bar">
+                <button class="back" id="backBtn" aria-label="Volver">←</button>
+                <div class="title">
+                    <h1>Chat en vivo <span id="connDot" class="status-dot offline"></span></h1>
+                    <div class="room-tag">
+                        <span id="roomLabel">Sala global</span>
+                        <button class="pill" id="switchRoomBtn" title="Cambiar sala">Cambiar sala</button>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+
+        <div class="wrap">
+            <ul id="messages" class="messages" aria-live="polite" aria-relevant="additions"></ul>
+            <div id="typing" class="typing"><span id="typingName">Alguien</span> está escribiendo <span
+                    class="dots"><i></i><i></i><i></i></span></div>
+        </div>
+
+
+        <div class="composer">
+            <div class="field">
+                <input id="messageInput" type="text" autocomplete="off" placeholder="Escribe un mensaje…" />
+                <button id="sendBtn" class="send">Enviar</button>
+            </div>
+        </div>
+    </div>
+
+
+    <div id="toast" class="toast" role="status"></div>
+
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/assets/js/chat.js"></script>
+</body>
+
+</html>

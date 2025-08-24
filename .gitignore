@@ -1,0 +1,8 @@
+# Raíz
+node_modules
+# Cualquier subcarpeta (monorepo)
+**/node_modules/
+.env
+dist/
+build/
+.DS_Store
