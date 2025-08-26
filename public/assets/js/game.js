@@ -4,6 +4,7 @@ import { topics } from './topics.js';
 import { state } from './state.js';
 import { $, showScreen, showError, hideError, updateConnectionStatus, setNewGameVisibility } from './ui.js';
 import { markInRoom, markOutRoom, openChat, closeChatOverlay } from './overlay.js';
+import { getImageForItem } from './images.js';
 
 
 
@@ -152,7 +153,7 @@ function getWordsFromSelection({ category, subtopic, customWord }) {
 function saveRoomCode(code) {
   state.roomCode = code;
   try { sessionStorage.setItem('gameRoomCode', code); } catch {}
-  console.log('✅ roomCode guardado:', state.roomCode);
+  //console.log('✅ roomCode guardado:', state.roomCode);
 }
 function getRoomCode() {
   if (state.roomCode) return state.roomCode;
@@ -168,39 +169,10 @@ function getRoomCode() {
 ///////////////////////
 function initializeSocket() {
   if (state.socket) return;
-  state.socket = io();
+  state.socket = io(); // o io("https://tu-backend.onrender.com")
 
   state.socket.on('connect', () => updateConnectionStatus('connected'));
   state.socket.on('disconnect', () => { updateConnectionStatus('disconnected'); markOutRoom(); });
-
-  state.socket.on('roomJoined', (data) => {
-    saveRoomCode(data.roomCode);
-    state.isHost = data.isHost || false;
-    state.playersInRoom = data.players;
-    showWaitingRoom();
-    markInRoom();
-  });
-
-  state.socket.on('playerJoined', (data) => { state.playersInRoom = data.players; updatePlayersInRoom(); });
-  state.socket.on('playerLeft', (data)   => { 
-    state.playersInRoom = data.players; 
-  const me = data.players.find(p => p.id === state.socket.id);
-  state.isHost = !!(me && me.isHost);
-  showWaitingRoom();
-    updatePlayersInRoom(); 
-  });
-
-  state.socket.on('joinError', (m) => showError(m));
-
-  state.socket.on('gameStarted', (gameData) => handleOnlineGameStart(gameData));
-
-  state.socket.on('turnChanged', (data) => {
-    state.currentPlayerIndex = data.currentPlayerIndex;
-    const btn = $('#nextBtn'); if (btn) btn.disabled = false;
-    if (data.isGameReady) showAllPlayersReady(); else showOnlinePlayerTurn();
-  });
-
-  state.socket.on('gameResult', (data) => showOnlineResults(data));
 
   state.socket.on('roomCreated', (data) => {
     saveRoomCode(data.roomCode);
@@ -210,6 +182,58 @@ function initializeSocket() {
     showWaitingRoom();
     markInRoom();
   });
+
+  state.socket.on('roomJoined', (data) => {
+    saveRoomCode(data.roomCode);
+    state.isHost = data.isHost || false;
+    state.playersInRoom = data.players;
+    showWaitingRoom();
+    markInRoom();
+  });
+
+  state.socket.on('playerJoined', (data) => {
+    state.playersInRoom = data.players;
+    updatePlayersInRoom();
+  });
+
+  state.socket.on('playerLeft', (data) => {
+    state.playersInRoom = data.players;
+    const me = data.players.find(p => p.id === state.socket.id);
+    state.isHost = !!(me && me.isHost);
+    showWaitingRoom();
+    updatePlayersInRoom();
+  });
+
+  state.socket.on('joinError', (m) => showError(m));
+
+  // ✅ SOLO este listener para iniciar en simultáneo
+  state.socket.on('gameStarted', (gameData) => {
+    handleOnlineGameStartSimul(gameData);
+  });
+
+  state.socket.on('playersReady', ({ ready, total }) => {
+    const gameCard = $('#gameCard');
+    const info = gameCard?.querySelector('.ready-progress');
+    if (info) info.textContent = `Listos: ${ready}/${total}`;
+  });
+
+ state.socket.on('allReady', () => {
+  // Oculta el botón "Estoy listo" si quedó en pantalla
+  const readyBtn = document.getElementById('imReadyBtn');
+  if (readyBtn) readyBtn.style.display = 'none';
+
+  if (state.isHost) {
+    // Host: ir directo a la votación (misma lógica de antes)
+    showScreen('game');       // nos aseguramos de estar en la pantalla del juego
+    showVotingScreen();       // abre #simpleVoting (host elige ganador)
+  } else {
+    // No host: mostrar cartel “Todos listos, esperando al anfitrión…”
+    showAllPlayersReady();
+  }
+});
+
+
+  state.socket.on('gameResult', (data) => showOnlineResults(data));
 
   state.socket.on('error', (m) => {
     showError(m);
@@ -224,6 +248,108 @@ function initializeSocket() {
     state.socket._chatOverlayPatched = true;
   }
 }
+
+function handleOnlineGameStartSimul(gameData) {
+  state.playersInRoom = gameData.players || state.playersInRoom;
+  state.players = state.playersInRoom.map(p => p.name);
+
+  // NO pises con null si sos impostor
+  if (gameData.word) state.gameWord = gameData.word;
+
+  // Guardar el tema (para saber la categoría al buscar imagen)
+  state.currentTheme = gameData.theme || null;
+  if (gameData.theme?.category) {
+    state.selectedOnlineCategory = gameData.theme.category;
+  }
+
+  // Determinar si soy impostor según el rol per-user
+  state.isImpostorMe = (gameData.role === 'impostor');
+
+  // (Opcional) mantener índice/id si también vienen
+  if (typeof gameData.impostorIndex === 'number') {
+    state.impostorIndex = gameData.impostorIndex;
+  } else if (gameData.impostorId) {
+    state.impostorIndex = state.playersInRoom.findIndex(p => p.id === gameData.impostorId);
+  } else {
+    state.impostorIndex = -1;
+  }
+
+  state.gameMode = 'online';
+  state.gameStarted = true;
+
+  state.savedPlayers = state.players.slice();
+  state.savedPlayers.forEach(n => { if (state.playerScores[n] === undefined) state.playerScores[n] = 0; });
+
+  showScreen('game');
+  showOnlineRoleSimul();
+  setNewGameVisibility();
+}
+
+
+
+
+function showOnlineRoleSimul() {
+  const me = state.playersInRoom.find(p => p.id === state.socket.id);
+  const myName = me?.name || state.playerName || 'Vos';
+  const isImpostor = !!state.isImpostorMe;
+
+  const card = $('#gameCard');
+  card.innerHTML = `
+    <h3 id="playerNameDisplay">${myName}</h3>
+    <div class="role-text ${isImpostor ? 'impostor' : 'player'}" id="roleDisplay">
+      ${isImpostor ? '¡Sos el IMPOSTOR!' : 'Sos JUGADOR'}
+    </div>
+    <div id="wordDisplay" class="word-display">
+      ${isImpostor ? '¿Podés adivinar la palabra?' : (state.gameWord || '').toUpperCase()}
+    </div>
+    <p class="ready-progress" style="color: rgba(255,255,255,.75); margin-top:8px;"></p>
+  `;
+
+  // Ocultar botones viejos
+  $('#showRoleBtn').style.display = 'none';
+  $('#hideBtn').style.display = 'none';
+  $('#nextBtn').style.display = 'none';
+  $('#startPlayingBtn').style.display = 'none';
+
+  // Reset del botón "Estoy listo"
+  let readyBtn = document.getElementById('imReadyBtn');
+  if (!readyBtn) {
+    readyBtn = document.createElement('button');
+    readyBtn.id = 'imReadyBtn';
+    readyBtn.className = 'btn btn-secondary';
+    readyBtn.onclick = playerReady;
+    card.parentElement.appendChild(readyBtn);
+  }
+  readyBtn.disabled = false;
+  readyBtn.textContent = 'Estoy listo';
+  readyBtn.style.display = 'inline-block';
+
+  // ✅ Cargar imagen para los NO impostores
+  if (!isImpostor && state.gameWord) {
+    const category = state.currentTheme?.category || state.selectedOnlineCategory || 'Fútbol';
+    getImageForItem(state.gameWord, category).then((url) => {
+      if (!url) return;
+      const img = document.createElement('img');
+      img.className = 'word-image';
+      img.alt = state.gameWord;
+      img.src = url;
+      img.referrerPolicy = 'no-referrer'; // ayuda con Wikipedia en Safari/iOS
+      $('#gameCard')?.appendChild(img);
+    });
+  }
+}
+
+
+
+
+function playerReady() {
+  const btn = document.getElementById('imReadyBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Listo ✓'; }
+  const roomCode = (typeof getRoomCode === 'function') ? getRoomCode() : state.roomCode;
+  if (!roomCode || !state.socket || !state.socket.connected) return;
+  state.socket.emit('playerReady', { roomCode });
+}
+
 
 ///////////////////////
 // Online UI + flujo
@@ -330,7 +456,7 @@ function startOnlineGame() {
 
   const topic = (category === "Fútbol") ? `Fútbol::${subtopic}` : category;
 
-  console.log('[DEBUG] startOnlineGame =>', { category, subtopic, topic });
+  //console.log('[DEBUG] startOnlineGame =>', { category, subtopic, topic });
 
   state.socket.emit('startGame', {
     roomCode: state.roomCode,
@@ -354,7 +480,7 @@ function handleOnlineGameStart(gameData) {
     if (idx >= 0) state.impostorIndex = idx;
     else {
       // Si llega a pasar, loguealo y mostrales un error en vez de forzar 0 (host)
-      console.warn('[WARN] impostorId no encontrado en players');
+      //console.warn('[WARN] impostorId no encontrado en players');
       state.impostorIndex = 0; // si querés, pero ya sabés que esto “bias-ea” al host
     }
   }
@@ -571,8 +697,11 @@ function showPlayerTurn() {
 
 function showPlayerRole() {
   const isOnline = (state.gameMode === 'online');
-  const name = isOnline ? (state.playersInRoom[state.currentPlayerIndex]?.name || 'Jugador') : state.players[state.currentPlayerIndex];
+  const name = isOnline
+    ? (state.playersInRoom[state.currentPlayerIndex]?.name || 'Jugador')
+    : state.players[state.currentPlayerIndex];
   const isImpostor = (state.currentPlayerIndex === state.impostorIndex);
+
   const card = $('#gameCard');
   card.innerHTML = `
     <h3 id="playerNameDisplay">${name}</h3>
@@ -582,10 +711,30 @@ function showPlayerRole() {
     <div id="wordDisplay" class="word-display">
       ${isImpostor ? '¿Puedes adivinar la palabra?' : state.gameWord.toUpperCase()}
     </div>`;
+
   state.playerInfoVisible = true;
   $('#showRoleBtn').style.display = 'none';
   $('#hideBtn').style.display = 'inline-block';
+
+  // 🔥 Añadir imagen SOLO si no es impostor (para no delatar la palabra)
+  if (!isImpostor) {
+    const category = isOnline
+      ? (state.selectedOnlineCategory || 'Fútbol')
+      : (state.selectedCategory || 'Fútbol');
+
+    // Trae imagen y la coloca debajo de la palabra
+    getImageForItem(state.gameWord, category).then((url) => {
+      if (!url) return;
+      const img = document.createElement('img');
+      img.className = 'word-image';
+      img.alt = state.gameWord;
+      img.src = url;
+      img.referrerPolicy = 'no-referrer';
+      $('#gameCard')?.appendChild(img);
+    });
+  }
 }
+
 
 function hidePlayerInfo() {
   if (!state.playerInfoVisible) return;
@@ -759,7 +908,7 @@ function resetGame() {
   updatePlayersList();
   hideError();
   markOutRoom();
-  console.log('🔄 Juego reseteado completamente');
+  //console.log('🔄 Juego reseteado completamente');
 }
 
 function init() {

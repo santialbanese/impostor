@@ -88,37 +88,62 @@ socket.on('createRoom', (playerName) => {
 // ===== GAME: iniciar
 socket.on('startGame', ({ roomCode, topic, theme }) => {
   const room = rooms.get(roomCode);
-  if (!room) return socket.emit('error', `Sala ${roomCode} no encontrada`);
-  if (room.host !== socket.id) return socket.emit('error', 'No tienes permisos para iniciar el juego');
+  if (!room || room.host !== socket.id) return socket.emit('error', 'No tienes permisos para iniciar el juego');
   if (room.players.length < 3) return socket.emit('error', 'Necesitas al menos 3 jugadores');
 
-  const selection = normalizeTheme(topic, theme); // normaliza categoría/subtema
+  const selection = normalizeTheme(topic, theme);
   room.gameStarted = true;
   room.topic = selection;
 
-  // Pasamos la info de fairness para el re-roll
-  room.gameData = setupGame(room.players, selection, {
-    lastImpostorId: room.lastImpostorId,
-    lastImpostorStreak: room.lastImpostorStreak || 0,
-  });
+  // setupGame como siempre
+  room.gameData = setupGame(room.players, selection);
+  // preparar “readys” para esta ronda
+  room.gameData.ready = new Set();
 
-  // Actualizamos la racha
-  if (room.gameData.impostorId && room.gameData.impostorId === room.lastImpostorId) {
-    room.lastImpostorStreak = (room.lastImpostorStreak || 0) + 1;
-  } else {
-    room.lastImpostorStreak = 1; // la racha del nuevo impostor arranca en 1
-  }
-  room.lastImpostorId = room.gameData.impostorId;
-
-  io.to(roomCode).emit('gameStarted', {
-    players: room.gameData.players,
+  /* console.log(`Juego iniciado en sala ${roomCode}:`, {
     word: room.gameData.word,
-    impostorId: room.gameData.impostorId,
-    impostorIndex: room.gameData.impostorIndex,
+    impostor: room.players[room.gameData.impostorIndex].name,
+    totalPlayers: room.players.length,
     theme: selection,
-    currentPlayerIndex: 0,
+  }); */
+
+  //  Enviar a CADA jugador su rol (impostor no recibe la palabra)
+  // Enviar a CADA jugador su rol (impostor no recibe la palabra)
+  room.players.forEach(p => {
+    const isImpostor = (p.id === room.gameData.impostorId);
+    io.to(p.id).emit('gameStarted', {
+     players: room.gameData.players,            // lista de jugadores
+      role: isImpostor ? 'impostor' : 'player',  // rol del receptor
+      word: isImpostor ? null : room.gameData.word, // palabra sólo para no-impostor
+      theme: selection,
+      // 👇 MUY IMPORTANTE: enviar quién es el impostor
+      impostorId: room.gameData.impostorId,
+      impostorIndex: room.gameData.impostorIndex
+    });
   });
 });
+
+
+// ===== GAME: “Estoy listo”
+socket.on('playerReady', ({ roomCode }) => {
+  const room = rooms.get(roomCode);
+  if (!room || !room.gameData) return;
+
+  room.gameData.ready ??= new Set();
+  room.gameData.ready.add(socket.id);
+
+  const readyCount = room.gameData.ready.size;
+  const total = room.players.length;
+
+  // update en vivo (opcional)
+  io.to(roomCode).emit('playersReady', { ready: readyCount, total });
+
+  if (readyCount === total) {
+    // todos confirmaron
+    io.to(roomCode).emit('allReady');
+  }
+});
+
 
 
   // ===== GAME: siguiente turno
