@@ -48,6 +48,177 @@ function normalizeTheme(topic, theme) {
 }
 
 
+
+/* NUEVO */
+/* NUEVO */
+
+function rotateLeft(arr) {
+  if (!Array.isArray(arr) || arr.length < 2) return arr || [];
+  const [first, ...rest] = arr;
+  return [...rest, first];
+}
+function getRoomActivePlayers(room) {
+  const ids = room.gameData.active || [];
+  return room.players.filter(p => ids.includes(p.id));
+}
+function findById(room, id) {
+  return room.players.find(p => p.id === id);
+}
+function isImpostorAlive(room) {
+  return (room.gameData.active || []).includes(room.gameData.impostorId);
+}
+function startRound(io, room) {
+  const gd = room.gameData;
+  gd.stage = 'submit';
+  gd.roundNumber = (gd.roundNumber || 0) + 1;
+  // limpiar envíos/votos
+  gd.submissions = {};
+  gd.votes = {};
+  gd.voteRound = 0;
+
+  // rotar orden y filtrar solo vivos
+  if (!gd.turnOrder) gd.turnOrder = room.players.map(p => p.id);
+  else gd.turnOrder = rotateLeft(gd.turnOrder);
+
+  const activeSet = new Set(gd.active);
+  gd.turnOrder = gd.turnOrder.filter(id => activeSet.has(id));
+
+  // si quedan 2 → gana impostor si sigue vivo (regla que pediste)
+  if (gd.active.length <= 2) {
+    const impostorWins = isImpostorAlive(room);
+    const impPlayer = findById(room, room.gameData.impostorId);
+    io.to(room.code).emit('gameResult', {
+      impostorWon: impostorWins,
+      impostor: impPlayer,
+      word: gd.word
+    });
+    room.gameStarted = false;
+    room.gameData = null;
+    return;
+  }
+
+  gd.speakIndex = 0;
+  const currentSpeakerId = gd.turnOrder[gd.speakIndex];
+
+  const payload = {
+    round: gd.roundNumber,
+    order: gd.turnOrder.map(id => findById(room, id)).map(p => ({ id: p.id, name: p.name })),
+    currentSpeakerId,
+    activePlayers: getRoomActivePlayers(room).map(p => ({ id: p.id, name: p.name })),
+  };
+  io.to(room.code).emit('roundStarted', payload);
+}
+
+function advanceSpeaker(io, room) {
+  const gd = room.gameData;
+  gd.speakIndex++;
+  if (gd.speakIndex >= gd.turnOrder.length) {
+    // terminó la fase de envíos → arrancar votación
+    startVoting(io, room, gd.active);
+    return;
+  }
+  const currentSpeakerId = gd.turnOrder[gd.speakIndex];
+  io.to(room.code).emit('submissionProgress', {
+    submissions: gd.submissions,              // { playerId: "palabra", ... }
+    currentSpeakerId,
+  });
+}
+
+function startVoting(io, room, eligibleIds) {
+  const gd = room.gameData;
+  gd.stage = 'vote';
+  gd.votes = {};
+  gd.voteRound = (gd.voteRound || 0) + 1;
+  gd.eligibleForVote = [...eligibleIds];
+  io.to(room.code).emit('votingStarted', {
+    round: gd.roundNumber,
+    voteRound: gd.voteRound,
+    eligible: gd.eligibleForVote,
+    activePlayers: getRoomActivePlayers(room).map(p => ({ id: p.id, name: p.name })),
+    submissions: gd.submissions,
+  });
+}
+
+function tallyVotes(io, room) {
+  const gd = room.gameData;
+  const counts = {};
+  for (const voterId of Object.keys(gd.votes)) {
+    const target = gd.votes[voterId];
+    if (!gd.eligibleForVote.includes(target)) continue;
+    counts[target] = (counts[target] || 0) + 1;
+  }
+  // top
+  let max = -1, leaders = [];
+  for (const [pid, c] of Object.entries(counts)) {
+    if (c > max) { max = c; leaders = [pid]; }
+    else if (c === max) leaders.push(pid);
+  }
+  if (!leaders.length) {
+    // nadie votó -> no hay expulsión, próxima ronda
+    io.to(room.code).emit('noElimination', { reason: 'no_votes' });
+    startRound(io, room);
+    return;
+  }
+
+  if (leaders.length > 1) {
+    // empate
+    if ((gd.voteRound || 1) < 2) {
+      // una sola revancha
+      startVoting(io, room, leaders);
+      return;
+    }
+    // segunda vez empatado → sin expulsión, próxima ronda
+    io.to(room.code).emit('noElimination', { reason: 'tie_twice', tied: leaders });
+    startRound(io, room);
+    return;
+  }
+
+  // expulsión
+  const eliminatedId = leaders[0];
+  const eliminatedWasImpostor = (eliminatedId === gd.impostorId);
+  gd.active = gd.active.filter(id => id !== eliminatedId);
+  const eliminatedPlayer = findById(room, eliminatedId);
+
+  io.to(room.code).emit('votingResult', {
+    eliminatedId,
+    eliminatedName: eliminatedPlayer?.name || 'Jugador',
+    eliminatedWasImpostor,
+    counts,
+  });
+
+  if (eliminatedWasImpostor) {
+    const impPlayer = findById(room, gd.impostorId);
+    io.to(room.code).emit('gameResult', {
+      impostorWon: false,
+      impostor: impPlayer,
+      word: gd.word
+    });
+    room.gameStarted = false;
+    room.gameData = null;
+    return;
+  }
+
+  // si quedan 2 → gana impostor
+  if (gd.active.length <= 2) {
+    const impostorWins = isImpostorAlive(room);
+    const impPlayer = findById(room, gd.impostorId);
+    io.to(room.code).emit('gameResult', {
+      impostorWon: impostorWins,
+      impostor: impPlayer,
+      word: gd.word
+    });
+    room.gameStarted = false;
+    room.gameData = null;
+    return;
+  }
+
+  // si no, nueva ronda
+  startRound(io, room);
+}
+
+
+
+
 io.on('connection', (socket) => {
   console.log('Usuario conectado:', socket.id);
 
@@ -85,7 +256,6 @@ socket.on('createRoom', (playerName) => {
   });
 
 
-// ===== GAME: iniciar
 socket.on('startGame', ({ roomCode, topic, theme }) => {
   const room = rooms.get(roomCode);
   if (!room || room.host !== socket.id) return socket.emit('error', 'No tienes permisos para iniciar el juego');
@@ -95,28 +265,26 @@ socket.on('startGame', ({ roomCode, topic, theme }) => {
   room.gameStarted = true;
   room.topic = selection;
 
-  // setupGame como siempre
   room.gameData = setupGame(room.players, selection);
-  // preparar “readys” para esta ronda
+
+  // --- estado inicial del flujo nuevo ---
   room.gameData.ready = new Set();
+  room.gameData.stage = 'ready';
+  room.gameData.active = room.players.map(p => p.id);     // vivos
+  room.gameData.turnOrder = room.players.map(p => p.id);  // orden base (ingreso)
+  room.gameData.submissions = {};
+  room.gameData.votes = {};
+  room.gameData.voteRound = 0;
+  room.gameData.roundNumber = 0; // startRound lo incrementa a 1
 
-  /* console.log(`Juego iniciado en sala ${roomCode}:`, {
-    word: room.gameData.word,
-    impostor: room.players[room.gameData.impostorIndex].name,
-    totalPlayers: room.players.length,
-    theme: selection,
-  }); */
-
-  //  Enviar a CADA jugador su rol (impostor no recibe la palabra)
-  // Enviar a CADA jugador su rol (impostor no recibe la palabra)
+  // Enviar rol a cada jugador (impostor sin palabra)
   room.players.forEach(p => {
     const isImpostor = (p.id === room.gameData.impostorId);
     io.to(p.id).emit('gameStarted', {
-     players: room.gameData.players,            // lista de jugadores
-      role: isImpostor ? 'impostor' : 'player',  // rol del receptor
-      word: isImpostor ? null : room.gameData.word, // palabra sólo para no-impostor
+      players: room.gameData.players,
+      role: isImpostor ? 'impostor' : 'player',
+      word: isImpostor ? null : room.gameData.word,
       theme: selection,
-      // 👇 MUY IMPORTANTE: enviar quién es el impostor
       impostorId: room.gameData.impostorId,
       impostorIndex: room.gameData.impostorIndex
     });
@@ -124,7 +292,7 @@ socket.on('startGame', ({ roomCode, topic, theme }) => {
 });
 
 
-// ===== GAME: “Estoy listo”
+
 socket.on('playerReady', ({ roomCode }) => {
   const room = rooms.get(roomCode);
   if (!room || !room.gameData) return;
@@ -135,12 +303,55 @@ socket.on('playerReady', ({ roomCode }) => {
   const readyCount = room.gameData.ready.size;
   const total = room.players.length;
 
-  // update en vivo (opcional)
   io.to(roomCode).emit('playersReady', { ready: readyCount, total });
 
   if (readyCount === total) {
-    // todos confirmaron
-    io.to(roomCode).emit('allReady');
+    io.to(roomCode).emit('allReady');  // (el cliente oculta “Estoy listo”, etc.)
+    // 👉 arranca la PRIMERA ronda con orden rotado según round=1
+    startRound(io, room);
+  }
+});
+
+
+socket.on('submitWord', ({ roomCode, word }) => {
+  const room = rooms.get(roomCode);
+  if (!room || !room.gameData) return socket.emit('error', 'Sala inválida');
+  const gd = room.gameData;
+  if (gd.stage !== 'submit') return socket.emit('error', 'No es la fase de envíos');
+
+  const speakerId = gd.turnOrder[gd.speakIndex];
+  if (socket.id !== speakerId) return socket.emit('error', 'No es tu turno');
+
+  const clean = String(word || '').trim().slice(0, 40);
+  if (!clean) return socket.emit('error', 'La palabra no puede estar vacía');
+
+  gd.submissions[socket.id] = clean;
+
+  // Pasamos directo al siguiente (advanceSpeaker emite el progreso con el currentSpeakerId correcto)
+  advanceSpeaker(io, room);
+});
+
+
+// ===== VOTING: voto de cada jugador
+socket.on('castVote', ({ roomCode, targetId }) => {
+  const room = rooms.get(roomCode);
+  if (!room || !room.gameData) return socket.emit('error', 'Sala inválida');
+  const gd = room.gameData;
+  if (gd.stage !== 'vote') return socket.emit('error', 'No es la fase de votación');
+
+  if (!gd.active.includes(socket.id)) return socket.emit('error', 'Estás eliminado');
+  if (!gd.eligibleForVote.includes(targetId)) return socket.emit('error', 'Objetivo inválido');
+
+  gd.votes[socket.id] = targetId;
+
+  // cuando votaron todos los vivos -> cerrar votación
+  const aliveCount = gd.active.length;
+  const votesCount = Object.keys(gd.votes).length;
+  if (votesCount >= aliveCount) {
+    tallyVotes(io, room);
+  } else {
+    // opcional: enviar progreso de votos (sin revelar detalle)
+    io.to(room.code).emit('voteProgress', { votes: votesCount, total: aliveCount });
   }
 });
 

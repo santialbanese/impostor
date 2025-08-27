@@ -719,6 +719,180 @@ select {
 
 
 
+/* NUEVO */
+/* NUEVO */
+:root{
+  --bg-card: rgba(255,255,255,.06);
+  --bg-card-strong: rgba(255,255,255,.09);
+  --bd-soft: rgba(255,255,255,.12);
+  --txt-dim: rgba(255,255,255,.75);
+  --accent: #4ecdc4;
+  --danger: #ff6b6b;
+  --warning: #ffd166;
+}
+
+/* Contenedor general de la ronda */
+.round-header{
+  margin-bottom: 14px;
+}
+.round-header h3{
+  margin: 0 0 4px 0;
+  font-size: 1.15rem;
+}
+.round-header p{
+  margin: 0;
+  color: var(--txt-dim);
+  font-size: .9rem;
+}
+
+/* Grilla responsive con más aire */
+.players-grid{
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 14px;
+}
+
+/* Tarjetas con padding generoso y toque “glass” */
+.player-card{
+  background: var(--bg-card);
+  border: 1px solid var(--bd-soft);
+  border-radius: 14px;
+  padding: 12px;
+  min-height: 110px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: transform .12s ease, background .12s ease, border-color .12s ease;
+}
+
+/* El que habla ahora */
+.player-card.speaker{
+  background: var(--bg-card-strong);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(78,205,196,.25) inset;
+  position: relative;
+}
+.player-card.speaker::after{
+  content: "En turno";
+  position: absolute;
+  top: 10px; right: 10px;
+  font-size: .7rem;
+  color: #000;
+  background: var(--accent);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+/* Nombre */
+.player-name{
+  font-weight: 800;
+  letter-spacing: .2px;
+  font-size: .95rem;
+}
+
+/* Contenedor de “la palabra” o del input */
+.submission{
+  flex: 1;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px dashed var(--bd-soft);
+  border-radius: 10px;
+  min-height: 42px;
+  padding: 8px;
+  text-align: center;
+  word-break: break-word;
+}
+.submission.shown{
+  font-size: 1rem;
+}
+.submission.waiting{
+  color: var(--txt-dim);
+  font-style: italic;
+}
+
+/* Input de palabra: full-width y táctil */
+.submission.input{
+  border-style: solid;
+  background: rgba(255,255,255,.04);
+  flex-direction: column;
+  gap: 8px;
+}
+.submission.input input{
+  width: 100%;
+  padding: 10px 12px;
+  background: #0b0f14;
+  color: #fff;
+  border: 1px solid var(--bd-soft);
+  border-radius: 10px;
+  font-size: 1rem;
+}
+.submission.input button{
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+}
+
+/* Votación: que se note que son “clickables” */
+.player-card.vote.eligible{
+  cursor: pointer;
+  outline: 2px solid transparent;
+}
+.player-card.vote.eligible:hover{
+  transform: translateY(-2px);
+  outline-color: rgba(255,255,255,.12);
+}
+.player-card.vote.disabled{
+  opacity: .5;
+  pointer-events: none;
+}
+
+/* Al elegir a alguien, dejalo marcado */
+.player-card.vote.picked{
+  border-color: var(--danger);
+  box-shadow: 0 0 0 2px rgba(255,107,107,.25) inset;
+  transform: scale(.98);
+}
+
+/* Hint fijo arriba en votación */
+.vote-banner{
+  background: linear-gradient(135deg, rgba(78,205,196,.2), rgba(255,209,102,.2));
+  border: 1px solid var(--bd-soft);
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  color: #fff;
+  font-size: .95rem;
+}
+.vote-banner strong{ color: var(--warning); }
+
+/* Mensaje bajo la grilla (progreso) */
+#voteHint{
+  color: var(--txt-dim);
+  text-align: center;
+  font-size: .95rem;
+}
+
+/* Botones genéricos */
+.btn{
+  min-height: 42px;
+  font-weight: 700;
+}
+
+/* MOBILE TUNING */
+@media (max-width: 480px){
+  .players-grid{
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+  .player-card{
+    padding: 10px;
+    min-height: 105px;
+  }
+  .player-name{ font-size: .92rem; }
+  .submission.shown{ font-size: .95rem; }
+}
+
+/* NUEVO */
+/* NUEVO */
 
 /* Responsivo para las nuevas pantallas */
 @media (min-width: 768px) {
