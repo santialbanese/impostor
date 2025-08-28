@@ -7,7 +7,7 @@
     "start": "node server/index.js",
     "dev": "npx nodemon server/index.js"
   },
-  "engines": { "node": "18.x" },
+  "engines": { "node": ">=18" },
   "keywords": ["impostor", "juego", "socket.io"],
   "author": "Tu Nombre",
   "license": "MIT",

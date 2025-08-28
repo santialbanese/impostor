@@ -379,7 +379,7 @@ socket.on('playerReady', ({ roomCode }) => {
   const room = rooms.get(roomCode);
   if (!room || !room.gameData) return;
 
-  room.gameData.ready ??= new Set();
+  if (!room.gameData.ready) room.gameData.ready = new Set();
   room.gameData.ready.add(socket.id);
 
   const readyCount = room.gameData.ready.size;
