@@ -254,32 +254,30 @@ function initializeSocket() {
     if (info) info.textContent = `Listos: ${ready}/${total}`;
   });
 
-  state.socket.on('allReady', () => {
-  const readyBtn = document.getElementById('imReadyBtn');
-  if (readyBtn) readyBtn.style.display = 'none';
-  const sp = document.getElementById('startPlayingBtn');
-  if (sp) sp.style.display = 'none';
-  // El server enseguida va a emitir roundStarted
-  showAllPlayersReady();
-});
-
+  state.socket.on("allReady", () => {
+    const readyBtn = document.getElementById("imReadyBtn");
+    if (readyBtn) readyBtn.style.display = "none";
+    const sp = document.getElementById("startPlayingBtn");
+    if (sp) sp.style.display = "none";
+    // El server enseguida va a emitir roundStarted
+    showAllPlayersReady();
+  });
 
   // cuando arranca una ronda
   // initializeSocket()
-state.socket.on('roundStarted', (data) => {
-  const sp = document.getElementById('startPlayingBtn');
-  if (sp) sp.style.display = 'none';
-  const readyBtn = document.getElementById('imReadyBtn');
-  if (readyBtn) readyBtn.style.display = 'none';
+  state.socket.on("roundStarted", (data) => {
+    const sp = document.getElementById("startPlayingBtn");
+    if (sp) sp.style.display = "none";
+    const readyBtn = document.getElementById("imReadyBtn");
+    if (readyBtn) readyBtn.style.display = "none";
 
-  state.roundInfo.round = data.round;
-  state.roundInfo.order = data.order;
-  state.roundInfo.currentSpeakerId = data.currentSpeakerId;
-  state.roundInfo.activePlayers = data.activePlayers;
-  state.roundInfo.submissions = {};
-  renderRoundBoard();
-});
-
+    state.roundInfo.round = data.round;
+    state.roundInfo.order = data.order;
+    state.roundInfo.currentSpeakerId = data.currentSpeakerId;
+    state.roundInfo.activePlayers = data.activePlayers;
+    state.roundInfo.submissions = {};
+    renderRoundBoard();
+  });
 
   // progreso de envíos (siguiente en turno)
   state.socket.on("submissionProgress", ({ submissions, currentSpeakerId }) => {
@@ -305,12 +303,33 @@ state.socket.on('roundStarted', (data) => {
   state.socket.on(
     "votingResult",
     ({ eliminatedId, eliminatedName, eliminatedWasImpostor }) => {
-      // podés mostrar un toast / cartel
-      if (eliminatedWasImpostor) {
-        // el server ya emitirá gameResult, acá no hacemos nada extra
-      } else {
-        // seguirá otra ronda automáticamente (el server hace startRound)
+      // Mostramos el banner en la UI actual (votación) antes de que arranque la próxima ronda
+      showScreen("game");
+      const gameCard = document.getElementById("gameCard");
+
+      // Banner
+      const banner = document.createElement("div");
+      banner.className =
+        "vote-result-banner" + (eliminatedWasImpostor ? " good" : "");
+      banner.textContent = eliminatedWasImpostor
+        ? `${eliminatedName} ERA el impostor 🟢`
+        : `${eliminatedName} NO era impostor 🔴`;
+      // Insertar arriba del todo
+      gameCard.insertAdjacentElement("afterbegin", banner);
+
+      // Marcar la tarjeta del eliminado si todavía está renderizada
+      const card = gameCard.querySelector(
+        `.player-card[data-id="${eliminatedId}"]`
+      );
+      if (card) {
+        card.classList.add(
+          "eliminated",
+          eliminatedWasImpostor ? "right" : "wrong"
+        );
       }
+
+      // Nota: el server arranca la próxima ronda al toque (o tras un pequeño delay que agregamos abajo)
+      // No hace falta limpiar; la próxima pantalla reemplaza el contenido de gameCard.
     }
   );
 
@@ -448,46 +467,57 @@ function renderRoundBoard() {
 }
 
 function renderVotingBoard({ eligible, submissions }) {
-  showScreen('game');
+  showScreen("game");
   const active = state.roundInfo.activePlayers;
   if (submissions) state.roundInfo.submissions = submissions;
 
-  const gameCard = $('#gameCard');
-  const cards = active.map(p => {
-    const isEligible = eligible.includes(p.id);
-    const clue = state.roundInfo.submissions[p.id];
-    return `
-      <div class="player-card vote ${isEligible ? 'eligible' : 'disabled'}" data-id="${p.id}">
+  const gameCard = $("#gameCard");
+  const cards = active
+    .map((p) => {
+      const isEligible = eligible.includes(p.id);
+      const clue = state.roundInfo.submissions[p.id];
+      return `
+      <div class="player-card vote ${
+        isEligible ? "eligible" : "disabled"
+      }" data-id="${p.id}">
         <div class="player-name">${p.name}</div>
-        <div class="submission shown">${clue ? clue : '—'}</div>
+        <div class="submission shown">${clue ? clue : "—"}</div>
       </div>
     `;
-  }).join('');
+    })
+    .join("");
 
   gameCard.innerHTML = `
     <div class="vote-banner">
       <strong>VOTACIÓN:</strong> tocá el jugador que querés expulsar.
-      ${eligible.length !== active.length ? '<br>Re-votación entre empatados.' : ''}
+      ${
+        eligible.length !== active.length
+          ? "<br>Re-votación entre empatados."
+          : ""
+      }
     </div>
     <div class="players-grid">${cards}</div>
     <div id="voteHint" style="margin-top:10px;"></div>
   `;
 
-  gameCard.querySelectorAll('.player-card.vote.eligible').forEach(el => {
+  gameCard.querySelectorAll(".player-card.vote.eligible").forEach((el) => {
     el.onclick = () => {
-      const targetId = el.getAttribute('data-id');
+      const targetId = el.getAttribute("data-id");
       // marcar tu elección visualmente
-      gameCard.querySelectorAll('.player-card.vote').forEach(n => n.classList.remove('picked'));
-      el.classList.add('picked');
+      gameCard
+        .querySelectorAll(".player-card.vote")
+        .forEach((n) => n.classList.remove("picked"));
+      el.classList.add("picked");
 
-      state.socket.emit('castVote', { roomCode: state.roomCode, targetId });
-      $('#voteHint').textContent = 'Voto enviado. Esperando al resto…';
+      state.socket.emit("castVote", { roomCode: state.roomCode, targetId });
+      $("#voteHint").textContent = "Voto enviado. Esperando al resto…";
       // bloquear nuevas selecciones
-      gameCard.querySelectorAll('.player-card.vote').forEach(n => n.classList.add('disabled'));
+      gameCard
+        .querySelectorAll(".player-card.vote")
+        .forEach((n) => n.classList.add("disabled"));
     };
   });
 }
-
 
 function showOnlineRoleSimul() {
   const me = state.playersInRoom.find((p) => p.id === state.socket.id);
@@ -733,31 +763,30 @@ function handleOnlineGameStart(gameData) {
 }
 
 function showAllPlayersReady() {
-  const card = $('#gameCard');
-  const startBtn = $('#startPlayingBtn');
+  const card = $("#gameCard");
+  const startBtn = $("#startPlayingBtn");
 
   card.innerHTML = `
     <div class="info-hidden">
       <h3>¡Todos listos!</h3>
       <p>Todos los jugadores conocen sus roles</p>
       <p style="color:#4ecdc4;font-weight:bold;">
-        ${state.gameMode === 'online' ? 'Esperando…' : '¡Es hora de jugar!'}
+        ${state.gameMode === "online" ? "Esperando…" : "¡Es hora de jugar!"}
       </p>
       <span style="font-size:2rem;">🎭</span>
     </div>`;
 
   // 👇 ONLINE: que NO se muestre nunca
-  if (state.gameMode === 'online') {
-    startBtn.style.display = 'none';
+  if (state.gameMode === "online") {
+    startBtn.style.display = "none";
   } else {
-    startBtn.style.display = 'inline-block';
+    startBtn.style.display = "inline-block";
   }
 
-  $('#showRoleBtn').style.display = 'none';
-  $('#hideBtn').style.display = 'none';
-  $('#nextBtn').style.display = 'none';
+  $("#showRoleBtn").style.display = "none";
+  $("#hideBtn").style.display = "none";
+  $("#nextBtn").style.display = "none";
 }
-
 
 function showOnlinePlayerTurn() {
   if (state.currentPlayerIndex >= state.playersInRoom.length) {

@@ -17,6 +17,44 @@ app.get('/', (req, res) => res.sendFile(path.join(__dirname, '..', 'public', 'in
 const rooms = new Map();
 const chatNeedsClear = new Set();
 
+// --- Helpers de orden por PARTIDA ---
+function rotateBy(arr, k = 1) {
+  const n = arr.length || 0;
+  if (n === 0) return [];
+  const s = ((k % n) + n) % n;
+  return [...arr.slice(s), ...arr.slice(0, s)];
+}
+
+function ensureSeatOrder(room) {
+  if (!room.seatOrder) room.seatOrder = room.players.map(p => p.id);
+  // asegurar que seatOrder sólo tenga jugadores actuales (y en ese orden de ingreso original)
+  const set = new Set(room.players.map(p => p.id));
+  room.seatOrder = room.seatOrder.filter(id => set.has(id));
+  // agregar al final ids nuevos que no estuvieran
+  room.players.forEach(p => { if (!room.seatOrder.includes(p.id)) room.seatOrder.push(p.id); });
+  if (typeof room.nextStartIndex !== 'number') room.nextStartIndex = 0;
+}
+
+function removeFromSeatOrder(room, id) {
+  ensureSeatOrder(room);
+  const idx = room.seatOrder.indexOf(id);
+  if (idx === -1) return;
+  room.seatOrder.splice(idx, 1);
+  const n = room.seatOrder.length;
+  if (n <= 0) { room.nextStartIndex = 0; return; }
+  // si quitaste a alguien antes del puntero, correlo 1 hacia atrás
+  if (room.nextStartIndex > idx) room.nextStartIndex--;
+  room.nextStartIndex = ((room.nextStartIndex % n) + n) % n;
+}
+
+function advanceGameOffset(room) {
+  ensureSeatOrder(room);
+  const n = room.seatOrder.length;
+  if (n <= 0) { room.nextStartIndex = 0; return; }
+  room.nextStartIndex = (room.nextStartIndex + 1) % n;
+}
+
+
 // helper: normaliza lo que viene del cliente
 function normalizeTheme(topic, theme) {
   // 1) Si topic viene con "Fútbol::<subtema>", usalo SIEMPRE (es la señal más completa)
@@ -67,31 +105,35 @@ function findById(room, id) {
 function isImpostorAlive(room) {
   return (room.gameData.active || []).includes(room.gameData.impostorId);
 }
+
+
 function startRound(io, room) {
   const gd = room.gameData;
   gd.stage = 'submit';
   gd.roundNumber = (gd.roundNumber || 0) + 1;
+
   // limpiar envíos/votos
   gd.submissions = {};
   gd.votes = {};
   gd.voteRound = 0;
 
-  // rotar orden y filtrar solo vivos
-  if (!gd.turnOrder) gd.turnOrder = room.players.map(p => p.id);
-  else gd.turnOrder = rotateLeft(gd.turnOrder);
-
+  // NO rotamos entre rondas. El orden ya viene de la PARTIDA.
   const activeSet = new Set(gd.active);
   gd.turnOrder = gd.turnOrder.filter(id => activeSet.has(id));
+  if (gd.turnOrder.length === 0) gd.turnOrder = gd.active.slice();
 
-  // si quedan 2 → gana impostor si sigue vivo (regla que pediste)
+  // Fin automático si quedan 2
   if (gd.active.length <= 2) {
     const impostorWins = isImpostorAlive(room);
-    const impPlayer = findById(room, room.gameData.impostorId);
+    const impPlayer = findById(room, gd.impostorId);
     io.to(room.code).emit('gameResult', {
       impostorWon: impostorWins,
       impostor: impPlayer,
       word: gd.word
     });
+    // 👇 Avanzar offset para la PRÓXIMA PARTIDA
+    advanceGameOffset(room);
+
     room.gameStarted = false;
     room.gameData = null;
     return;
@@ -108,6 +150,8 @@ function startRound(io, room) {
   };
   io.to(room.code).emit('roundStarted', payload);
 }
+
+
 
 function advanceSpeaker(io, room) {
   const gd = room.gameData;
@@ -141,44 +185,53 @@ function startVoting(io, room, eligibleIds) {
 
 function tallyVotes(io, room) {
   const gd = room.gameData;
+  if (!gd) return;
+
+  const DELAY_MS = 1800; // ⬅️ tiempo para leer el banner antes de seguir
+
+  // Conteo de votos
   const counts = {};
-  for (const voterId of Object.keys(gd.votes)) {
-    const target = gd.votes[voterId];
-    if (!gd.eligibleForVote.includes(target)) continue;
+  for (const [voterId, target] of Object.entries(gd.votes || {})) {
+    if (!gd.eligibleForVote || !gd.eligibleForVote.includes(target)) continue;
     counts[target] = (counts[target] || 0) + 1;
   }
-  // top
+
+  // Ganador/es
   let max = -1, leaders = [];
   for (const [pid, c] of Object.entries(counts)) {
     if (c > max) { max = c; leaders = [pid]; }
     else if (c === max) leaders.push(pid);
   }
+
+  // Nadie votó
   if (!leaders.length) {
-    // nadie votó -> no hay expulsión, próxima ronda
     io.to(room.code).emit('noElimination', { reason: 'no_votes' });
     startRound(io, room);
     return;
   }
 
+  // Empate
   if (leaders.length > 1) {
-    // empate
     if ((gd.voteRound || 1) < 2) {
-      // una sola revancha
+      // 1 revancha entre empatados
       startVoting(io, room, leaders);
       return;
     }
-    // segunda vez empatado → sin expulsión, próxima ronda
+    // Empate por segunda vez → sin expulsión
     io.to(room.code).emit('noElimination', { reason: 'tie_twice', tied: leaders });
     startRound(io, room);
     return;
   }
 
-  // expulsión
+  // Expulsión
   const eliminatedId = leaders[0];
   const eliminatedWasImpostor = (eliminatedId === gd.impostorId);
-  gd.active = gd.active.filter(id => id !== eliminatedId);
+
+  // Sacar del array de vivos
+  gd.active = (gd.active || []).filter(id => id !== eliminatedId);
   const eliminatedPlayer = findById(room, eliminatedId);
 
+  // Mostrar resultado de la votación (el cliente pinta: "X NO era impostor" o revela que sí lo era)
   io.to(room.code).emit('votingResult', {
     eliminatedId,
     eliminatedName: eliminatedPlayer?.name || 'Jugador',
@@ -186,6 +239,7 @@ function tallyVotes(io, room) {
     counts,
   });
 
+  // Si era el impostor → fin de partida
   if (eliminatedWasImpostor) {
     const impPlayer = findById(room, gd.impostorId);
     io.to(room.code).emit('gameResult', {
@@ -193,28 +247,40 @@ function tallyVotes(io, room) {
       impostor: impPlayer,
       word: gd.word
     });
+
+    // (opcional) rotar el orden para la PRÓXIMA partida, si implementaste esta función
+    if (typeof advanceGameOffset === 'function') advanceGameOffset(room);
+
     room.gameStarted = false;
     room.gameData = null;
     return;
   }
 
-  // si quedan 2 → gana impostor
-  if (gd.active.length <= 2) {
+  // Si quedan 2 → resolver partida (después de mostrar el banner)
+  if ((gd.active || []).length <= 2) {
     const impostorWins = isImpostorAlive(room);
     const impPlayer = findById(room, gd.impostorId);
-    io.to(room.code).emit('gameResult', {
-      impostorWon: impostorWins,
-      impostor: impPlayer,
-      word: gd.word
-    });
-    room.gameStarted = false;
-    room.gameData = null;
+
+    setTimeout(() => {
+      io.to(room.code).emit('gameResult', {
+        impostorWon: impostorWins,
+        impostor: impPlayer,
+        word: gd.word
+      });
+      if (typeof advanceGameOffset === 'function') advanceGameOffset(room);
+      room.gameStarted = false;
+      room.gameData = null;
+    }, DELAY_MS);
+
     return;
   }
 
-  // si no, nueva ronda
-  startRound(io, room);
+  // NO era impostor → nueva ronda después de un toque
+  setTimeout(() => {
+    startRound(io, room);
+  }, DELAY_MS);
 }
+
 
 
 
@@ -234,11 +300,15 @@ socket.on('createRoom', (playerName) => {
     gameData: null,
     lastImpostorId: null,
     lastImpostorStreak: 0,
+    // NUEVO: orden estable de “asientos” (ingreso) y offset por PARTIDA
+    seatOrder: [socket.id],
+    nextStartIndex: 0,
   };
   rooms.set(roomCode, room);
   socket.join(roomCode);
   socket.emit('roomCreated', { roomCode, isHost: true, players: room.players });
 });
+
 
 
   // ===== GAME: unirse a sala
@@ -249,6 +319,10 @@ socket.on('createRoom', (playerName) => {
     if (room.players.some(p => p.name === playerName)) return socket.emit('joinError', 'Ya existe un jugador con ese nombre');
 
     room.players.push({ id: socket.id, name: playerName, isHost: false });
+
+    if (!room.seatOrder) room.seatOrder = [];
+    if (!room.seatOrder.includes(socket.id)) room.seatOrder.push(socket.id);
+
     socket.join(roomCode);
     console.log(`${playerName} se unió a la sala ${roomCode}`);
     socket.emit('roomJoined', { roomCode, isHost: false, players: room.players });
@@ -267,29 +341,37 @@ socket.on('startGame', ({ roomCode, topic, theme }) => {
 
   room.gameData = setupGame(room.players, selection);
 
-  // --- estado inicial del flujo nuevo ---
-  room.gameData.ready = new Set();
-  room.gameData.stage = 'ready';
-  room.gameData.active = room.players.map(p => p.id);     // vivos
-  room.gameData.turnOrder = room.players.map(p => p.id);  // orden base (ingreso)
-  room.gameData.submissions = {};
-  room.gameData.votes = {};
-  room.gameData.voteRound = 0;
-  room.gameData.roundNumber = 0; // startRound lo incrementa a 1
+  // --- estado inicial del flujo ---
+  const gd = room.gameData;
+  gd.ready = new Set();
+  gd.stage = 'ready';
+
+  // ORDEN POR PARTIDA (rotado entre partidas)
+  ensureSeatOrder(room);
+  const base = room.seatOrder.filter(id => room.players.some(p => p.id === id));
+  const orderThisGame = rotateBy(base, room.nextStartIndex);  // <<< ACA ROTAMOS ENTRE PARTIDAS
+
+  gd.turnOrder = orderThisGame.slice();     // orden de habla de esta partida
+  gd.active    = orderThisGame.slice();     // vivos (en el mismo orden)
+  gd.submissions = {};
+  gd.votes = {};
+  gd.voteRound = 0;
+  gd.roundNumber = 0;                       // startRound lo sube a 1
 
   // Enviar rol a cada jugador (impostor sin palabra)
   room.players.forEach(p => {
-    const isImpostor = (p.id === room.gameData.impostorId);
+    const isImpostor = (p.id === gd.impostorId);
     io.to(p.id).emit('gameStarted', {
-      players: room.gameData.players,
+      players: gd.players,
       role: isImpostor ? 'impostor' : 'player',
-      word: isImpostor ? null : room.gameData.word,
+      word: isImpostor ? null : gd.word,
       theme: selection,
-      impostorId: room.gameData.impostorId,
-      impostorIndex: room.gameData.impostorIndex
+      impostorId: gd.impostorId,
+      impostorIndex: gd.impostorIndex
     });
   });
 });
+
 
 
 
@@ -382,15 +464,20 @@ socket.on('castVote', ({ roomCode, targetId }) => {
 
   // ===== GAME: fin
   socket.on('gameEnded', ({ roomCode, impostorWon }) => {
-    const room = rooms.get(roomCode);
-    if (!room) return;
-    if (room.host !== socket.id) return socket.emit('error', 'Solo el anfitrión puede finalizar el juego');
+  const room = rooms.get(roomCode);
+  if (!room) return;
+  if (room.host !== socket.id) return socket.emit('error', 'Solo el anfitrión puede finalizar el juego');
 
-    const impostorPlayer = room.players.find(p => p.id === room.gameData.impostorId);
-    io.to(roomCode).emit('gameResult', { impostorWon, impostor: impostorPlayer, word: room.gameData.word });
-    room.gameStarted = false;
-    room.gameData = null;
-  });
+  const impostorPlayer = room.players.find(p => p.id === room.gameData.impostorId);
+  io.to(roomCode).emit('gameResult', { impostorWon, impostor: impostorPlayer, word: room.gameData.word });
+
+  // NUEVO: próxima partida empieza con el siguiente
+  advanceGameOffset(room);
+
+  room.gameStarted = false;
+  room.gameData = null;
+});
+
 
   // ===== GAME: salir
   socket.on('leaveRoom', ({ roomCode }) => {
@@ -399,6 +486,9 @@ socket.on('castVote', ({ roomCode, targetId }) => {
 
     const leaving = room.players.find(p => p.id === socket.id);
     room.players = room.players.filter(p => p.id !== socket.id);
+
+    removeFromSeatOrder(room, socket.id); 
+
     socket.leave(roomCode);
     console.log(`${leaving?.name || 'Jugador'} salió de la sala ${roomCode}`);
 
@@ -473,6 +563,7 @@ socket.on('castVote', ({ roomCode, targetId }) => {
       const i = room.players.findIndex(p => p.id === socket.id);
       if (i !== -1) {
         room.players.splice(i, 1);
+        removeFromSeatOrder(room, socket.id);
         if (room.players.length === 0) {
           rooms.delete(roomCode);
           chatNeedsClear.add(roomCode);
