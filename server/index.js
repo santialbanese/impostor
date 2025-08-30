@@ -17,6 +17,50 @@ app.get('/', (req, res) => res.sendFile(path.join(__dirname, '..', 'public', 'in
 const rooms = new Map();
 const chatNeedsClear = new Set();
 
+// Función para obtener descripción desde el servidor
+async function getWordDescription(word, category, subtopic = '') {
+  try {
+    const searchQuery = subtopic && category === 'Fútbol' ? `${word} futbolista` : word;
+    
+    // Buscar en Wikipedia español primero
+    const searchUrl = `https://es.wikipedia.org/w/rest.php/v1/search/page?q=${encodeURIComponent(searchQuery)}&limit=1`;
+    const searchRes = await fetch(searchUrl);
+    const searchData = await searchRes.json();
+    
+    if (!searchData.pages || !searchData.pages[0]) {
+      return null;
+    }
+    
+    const pageKey = searchData.pages[0].key;
+    const summaryUrl = `https://es.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(pageKey)}`;
+    const summaryRes = await fetch(summaryUrl);
+    const summaryData = await summaryRes.json();
+    
+    if (!summaryData.extract) {
+      return null;
+    }
+    
+    // Limpiar y recortar descripción
+    let desc = summaryData.extract;
+    desc = desc.replace(/^(.*?\s+)?(es|fue|era|son)\s+/i, '');
+    desc = desc.replace(/\s*\([^)]*\)\s*$/, '');
+    
+    if (desc.length > 150) {
+      const cutAt = desc.lastIndexOf('.', 150);
+      if (cutAt > 50) {
+        desc = desc.substring(0, cutAt + 1);
+      } else {
+        desc = desc.substring(0, 150) + '...';
+      }
+    }
+    
+    return desc.trim() || null;
+  } catch (error) {
+    console.warn('Error obteniendo descripción:', error);
+    return null;
+  }
+}
+
 // --- Helpers de orden por PARTIDA ---
 function rotateBy(arr, k = 1) {
   const n = arr.length || 0;
@@ -330,7 +374,7 @@ socket.on('createRoom', (playerName) => {
   });
 
 
-socket.on('startGame', ({ roomCode, topic, theme }) => {
+socket.on('startGame', async ({ roomCode, topic, theme }) => {
   const room = rooms.get(roomCode);
   if (!room || room.host !== socket.id) return socket.emit('error', 'No tienes permisos para iniciar el juego');
   if (room.players.length < 3) return socket.emit('error', 'Necesitas al menos 3 jugadores');
@@ -341,6 +385,13 @@ socket.on('startGame', ({ roomCode, topic, theme }) => {
 
   room.gameData = setupGame(room.players, selection);
 
+  // --- Obtener descripción de la palabra ---
+  const wordDescription = await getWordDescription(
+    room.gameData.word, 
+    selection.category, 
+    selection.subtopic
+  );
+
   // --- estado inicial del flujo ---
   const gd = room.gameData;
   gd.ready = new Set();
@@ -349,22 +400,23 @@ socket.on('startGame', ({ roomCode, topic, theme }) => {
   // ORDEN POR PARTIDA (rotado entre partidas)
   ensureSeatOrder(room);
   const base = room.seatOrder.filter(id => room.players.some(p => p.id === id));
-  const orderThisGame = rotateBy(base, room.nextStartIndex);  // <<< ACA ROTAMOS ENTRE PARTIDAS
+  const orderThisGame = rotateBy(base, room.nextStartIndex);
 
-  gd.turnOrder = orderThisGame.slice();     // orden de habla de esta partida
-  gd.active    = orderThisGame.slice();     // vivos (en el mismo orden)
+  gd.turnOrder = orderThisGame.slice();
+  gd.active = orderThisGame.slice();
   gd.submissions = {};
   gd.votes = {};
   gd.voteRound = 0;
-  gd.roundNumber = 0;                       // startRound lo sube a 1
+  gd.roundNumber = 0;
 
-  // Enviar rol a cada jugador (impostor sin palabra)
+  // Enviar rol a cada jugador (impostor sin palabra, INCLUIR descripción)
   room.players.forEach(p => {
     const isImpostor = (p.id === gd.impostorId);
     io.to(p.id).emit('gameStarted', {
       players: gd.players,
       role: isImpostor ? 'impostor' : 'player',
       word: isImpostor ? null : gd.word,
+      wordDescription: isImpostor ? null : wordDescription, // ← NUEVO
       theme: selection,
       impostorId: gd.impostorId,
       impostorIndex: gd.impostorIndex
