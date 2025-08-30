@@ -40,9 +40,11 @@ function normalizeCategory(cat = '') {
   if (c.includes('cantant') || c.includes('música') || c.includes('musica')) return 'cantantes';
   return c;
 }
+
 function looksLikeTeamName(name = '') {
   return /club|fc|cf|fútbol|football|sporting|deportivo|united|city|athletic|calcio|bayern|borussia|olympique|ajax|benfica|porto|sporting/i.test(name);
 }
+
 function placeholderDataURI(label = 'Sin imagen') {
   const svg = `
 <svg xmlns="http://www.w3.org/2000/svg" width="800" height="500">
@@ -58,6 +60,32 @@ function placeholderDataURI(label = 'Sin imagen') {
   </text>
 </svg>`;
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}
+
+// ---------- Nueva función para extraer y limpiar descripción ----------
+function extractDescription(summary, maxLength = 150) {
+  if (!summary?.extract) return null;
+  
+  let desc = summary.extract;
+  
+  // Limpiar texto común que no aporta
+  desc = desc.replace(/^(.*?\s+)?(es|fue|era|son)\s+/i, '');
+  desc = desc.replace(/^(.*?\s+)?(is|was|were|are)\s+/i, '');
+  
+  // Remover referencias entre paréntesis al final
+  desc = desc.replace(/\s*\([^)]*\)\s*$/, '');
+  
+  // Cortar en punto si es muy largo
+  if (desc.length > maxLength) {
+    const cutAt = desc.lastIndexOf('.', maxLength);
+    if (cutAt > 50) {
+      desc = desc.substring(0, cutAt + 1);
+    } else {
+      desc = desc.substring(0, maxLength) + '...';
+    }
+  }
+  
+  return desc.trim() || null;
 }
 
 // ---------- Wikipedia helpers ----------
@@ -84,9 +112,15 @@ async function wikipediaTryQueries(lang, queries, { preferLogo = false } = {}) {
 
     const sum = await fetchJSON(REST_SUMMARY(lang, first.key));
     const img = pickImageFromSummary(sum, { preferLogo });
-    if (img) return img;
+    
+    // Retornar tanto imagen como descripción
+    return {
+      image: img,
+      summary: sum,
+      description: extractDescription(sum)
+    };
   }
-  return null;
+  return { image: null, summary: null, description: null };
 }
 
 // ---------- Wikidata (logos) ----------
@@ -97,6 +131,7 @@ async function wikidataSearchEntity(name, lang = 'es') {
   const res = await fetchJSON(url);
   return res?.search?.[0]?.id || null;
 }
+
 async function wikidataGetLogoFile(entityId) {
   // P154 = logo image
   const url = `https://www.wikidata.org/w/api.php?action=wbgetclaims&entity=${encodeURIComponent(
@@ -107,6 +142,7 @@ async function wikidataGetLogoFile(entityId) {
   // claim es un filename de Commons, ej: "Real Madrid CF.svg"
   return typeof claim === 'string' ? claim : null;
 }
+
 function commonsFileURL(fileName, width = 512) {
   // Devuelve un PNG/redirect escalado si es SVG
   return `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(fileName)}?width=${width}`;
@@ -123,15 +159,10 @@ async function getFromDeezerArtist(name) {
   }
 }
 
-// ---------- API principal ----------
+// ---------- API principal MODIFICADA ----------
 /**
  * getImageForItem(name, category, opts)
- * - opts.subtopic: útil para detectar subtema “Equipos” en Fútbol
- * - Para equipos: Wikidata P154 (logo) → Wikipedia (consultas con 'escudo/logo/crest')
- * - Cantantes: Deezer → Wikipedia
- * - Películas: Wikipedia con hints (película/film)
- * - Futbolistas: Wikipedia con hints (futbolista/footballer)
- * - Otros: Wikipedia ES → EN
+ * Ahora retorna: { image: string, description: string|null }
  */
 export async function getImageForItem(name, category = '', opts = {}) {
   const title = String(name || '').trim();
@@ -147,80 +178,131 @@ export async function getImageForItem(name, category = '', opts = {}) {
   const cacheKey = `${normCat}:${subtopic}:${title}`;
   if (cache.has(cacheKey)) return cache.get(cacheKey);
 
-  let url = null;
+  let result = { image: null, description: null };
 
   try {
     // 0) Alias directo (Wikipedia summary)
     if (alias) {
       const sumES = await fetchJSON(REST_SUMMARY('es', alias.es || alias.en || title));
-      url = pickImageFromSummary(sumES, { preferLogo: isTeam });
-      if (!url && alias.en) {
+      const img = pickImageFromSummary(sumES, { preferLogo: isTeam });
+      const desc = extractDescription(sumES);
+      
+      if (img) {
+        result = { image: img, description: desc };
+      } else if (alias.en) {
         const sumEN = await fetchJSON(REST_SUMMARY('en', alias.en));
-        url = pickImageFromSummary(sumEN, { preferLogo: isTeam });
+        const imgEN = pickImageFromSummary(sumEN, { preferLogo: isTeam });
+        const descEN = extractDescription(sumEN);
+        if (imgEN) {
+          result = { image: imgEN, description: descEN };
+        }
       }
-      if (url) {
-        cache.set(cacheKey, url);
-        return url;
+      
+      if (result.image) {
+        cache.set(cacheKey, result);
+        return result;
       }
     }
 
     if (isTeam) {
-      // 1) EQUIPOS → Wikidata P154 (logo image)
+      // 1) EQUIPOS → Wikidata P154 (logo image) + descripción de Wikipedia
       const qId =
         (await wikidataSearchEntity(title, 'es')) ||
         (await wikidataSearchEntity(title, 'en'));
+      
+      let logoImg = null;
       if (qId) {
         const logoFile = await wikidataGetLogoFile(qId);
         if (logoFile) {
-          url = commonsFileURL(logoFile, 512);
+          logoImg = commonsFileURL(logoFile, 512);
         }
       }
 
-      // 2) Fallback: Wikipedia con queries que “fuerzan” logos
-      if (!url) {
-        const queriesES = [
-          `${title} escudo`,
-          `${title} logo`,
-          `${title} (club)`,
-          `${title} club de fútbol`,
-          title,
-        ];
-        const queriesEN = [
-          `${title} logo`,
-          `${title} crest`,
-          `${title} (football club)`,
-          title,
-        ];
-        url =
-          (await wikipediaTryQueries('es', queriesES, { preferLogo: true })) ||
-          (await wikipediaTryQueries('en', queriesEN, { preferLogo: true }));
-      }
+      // Buscar descripción en Wikipedia
+      const queriesES = [
+        `${title} escudo`,
+        `${title} logo`,
+        `${title} (club)`,
+        `${title} club de fútbol`,
+        title,
+      ];
+      const queriesEN = [
+        `${title} logo`,
+        `${title} crest`,
+        `${title} (football club)`,
+        title,
+      ];
+      
+      const wikiResultES = await wikipediaTryQueries('es', queriesES, { preferLogo: true });
+      const wikiResultEN = await wikipediaTryQueries('en', queriesEN, { preferLogo: true });
+      
+      result = {
+        image: logoImg || wikiResultES.image || wikiResultEN.image,
+        description: wikiResultES.description || wikiResultEN.description
+      };
+      
     } else if (normCat === 'cantantes') {
-      url =
-        (await getFromDeezerArtist(title)) ||
-        (await wikipediaTryQueries('es', [title, ...HINTS.cantantes.map(h => title + h)])) ||
-        (await wikipediaTryQueries('en', [title, ...HINTS.cantantes.map(h => title + h)]));
+      const deezerImg = await getFromDeezerArtist(title);
+      const wikiResultES = await wikipediaTryQueries('es', [title, ...HINTS.cantantes.map(h => title + h)]);
+      const wikiResultEN = await wikipediaTryQueries('en', [title, ...HINTS.cantantes.map(h => title + h)]);
+      
+      result = {
+        image: deezerImg || wikiResultES.image || wikiResultEN.image,
+        description: wikiResultES.description || wikiResultEN.description
+      };
+      
     } else if (normCat === 'peliculas') {
-      url =
-        (await wikipediaTryQueries('es', [title, ...HINTS.peliculas.map(h => title + h)])) ||
-        (await wikipediaTryQueries('en', [title, ' (film)']));
+      const wikiResultES = await wikipediaTryQueries('es', [title, ...HINTS.peliculas.map(h => title + h)]);
+      const wikiResultEN = await wikipediaTryQueries('en', [title, ' (film)']);
+      
+      result = {
+        image: wikiResultES.image || wikiResultEN.image,
+        description: wikiResultES.description || wikiResultEN.description
+      };
+      
     } else if (normCat === 'fútbol') {
       // Futbolistas
-      url =
-        (await wikipediaTryQueries('es', [title, ...HINTS.fútbol.map(h => title + h)])) ||
-        (await wikipediaTryQueries('en', [title, ...HINTS.futbol.map(h => title + h)]));
+      const wikiResultES = await wikipediaTryQueries('es', [title, ...HINTS.fútbol.map(h => title + h)]);
+      const wikiResultEN = await wikipediaTryQueries('en', [title, ...HINTS.futbol.map(h => title + h)]);
+      
+      result = {
+        image: wikiResultES.image || wikiResultEN.image,
+        description: wikiResultES.description || wikiResultEN.description
+      };
+      
     } else {
       // Otros
-      url =
-        (await wikipediaTryQueries('es', [title])) ||
-        (await wikipediaTryQueries('en', [title]));
+      const wikiResultES = await wikipediaTryQueries('es', [title]);
+      const wikiResultEN = await wikipediaTryQueries('en', [title]);
+      
+      result = {
+        image: wikiResultES.image || wikiResultEN.image,
+        description: wikiResultES.description || wikiResultEN.description
+      };
     }
   } catch (e) {
     console.warn('getImageForItem error', e);
   }
 
-  if (!url) url = placeholderDataURI(title);
+  if (!result.image) {
+    result.image = placeholderDataURI(title);
+  }
 
-  cache.set(cacheKey, url);
-  return url;
+  cache.set(cacheKey, result);
+  return result;
+}
+
+// ---------- Función auxiliar para usar en tu UI ----------
+export function formatDescription(description, name) {
+  if (!description) return `Más información sobre ${name}`;
+  
+  // Asegurar que empiece con mayúscula
+  let formatted = description.charAt(0).toUpperCase() + description.slice(1);
+  
+  // Asegurar que termine con punto
+  if (!formatted.endsWith('.') && !formatted.endsWith('!') && !formatted.endsWith('?')) {
+    formatted += '.';
+  }
+  
+  return formatted;
 }

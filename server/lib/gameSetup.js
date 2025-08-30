@@ -24,7 +24,7 @@ function setupGame(players, selection, fairness = {}) {
   // ===== 2) Pools base
   const BASE = {
   animales: ["perro","gato","elefante","león","tigre","oso","conejo","pájaro","pez","caballo","serpiente","pato","cocodrilo","jirafa","cebra","hipopótamo","rinoceronte","mono","lobo","zorro","ciervo","ardilla","ratón","murciélago","delfín","ballena","foca","koala","canguro","panda","águila","búho","pingüino","flamenco","loro","cisne","gallina","gallo","pavo","tortuga","iguana","lagarto","camaleón","rana","sapo","salamandra","tiburón","pulpo","medusa","estrella de mar","cangrejo","abeja","mariposa","hormiga","araña","libélula","escarabajo"],
-  películas: ['avatar','titanic','avengers','starwars','batman','superman','spiderman','frozen','shrek','harry potter','el señor de los anillos','jurassic park','jurassic world','el rey león','la bella y la bestia','los increíbles','buscando a nemo','coco','mi villano favorito','minions','madagascar','kung fu panda','cars','intensamente','moana','encanto','doctor strange','iron man','thor','black panther','toy story','Interstellar','Joker','Deadpool','Barbie','Forrest gump','Matrix','El lobo de wall street','Up','Ratatouille','Wall-e','Monsters inc','Aladdin','Piratas del caribe','Rápido y Furioso','Transformers','Maze runner','the silence of the lambs','the social network','a star is born','bohemian rhapsody','once upon a time in hollywood',"Guardianes de la Galaxia",'captain america','ant-man','black widow','john wick','mission: impossible','godzilla','breaking bad','game of thrones','stranger things','dark','the office','friends','black mirror','peaky blinders','narcos','la casa de papel','élite','vis a vis','chernobyl','lost','prison break','vikings',"grey's anatomy",'dragon ball z','el marginal','okupas','merlí'],
+  películas: ['avatar','titanic','avengers','starwars','batman','superman','spiderman','frozen','shrek','harry potter','el señor de los anillos','jurassic park','jurassic world','el rey león','la bella y la bestia','los increíbles','buscando a nemo','coco','mi villano favorito','minions','madagascar','kung fu panda','cars','intensamente','moana','encanto','doctor strange','iron man','thor','black panther','toy story','Interstellar','Joker','Deadpool','Barbie','Forrest gump','Matrix','El lobo de wall street','Up','Ratatouille','Wall-e','Monsters inc','Aladdin','Piratas del caribe','Rápido y Furioso','Transformers','Maze runner','the silence of the lambs','the social network','a star is born','bohemian rhapsody','once upon a time in hollywood',"Guardianes de la Galaxia",'captain america','ant-man','black widow','john wick','mission: impossible','godzilla','breaking bad','game of thrones','stranger things','dark','the office','friends','black mirror','peaky blinders','narcos','la casa de papel','élite','vis a vis','chernobyl','lost','prison break','vikings',"Grey's Anatomy",'dragon ball z','el marginal','okupas','merlí', 'El exorcista', 'La Monja', 'Terminator','Rocky', 'Scarface', '13 Reasons Why', 'Venom', 'Spider-Man', 'Breaking Bad', 'The Simpsons', 'Naruto','Arrow','The Flash','The Walking Dead','Saw','El Conjuro','Fight Club',],
   cantantes: [
     "Bad Bunny","Daddy Yankee","Don Omar","Wisin","Yandel","Rauw Alejandro","Ozuna","Anuel AA","Tego Calderón","Residente","Luis Fonsi","Ricky Martin","Chayanne","Pedro Capó","Nicky Jam","Farruko","De La Ghetto","Ñengo Flow","Arcángel","Zion","Lennox","Plan b",
     "Lunay","Myke Towers","Mora","Lyanno","Bryant Myers","Alex Rose","Dalex","Jay Wheeler","Almighty","Cosculluela",
@@ -50,7 +50,13 @@ function setupGame(players, selection, fairness = {}) {
     "Rosalía","C. Tangana","Aitana","Quevedo","Lola Índigo","Rels B","Bad Gyal","David Bisbal","Alejandro Sanz","Beret",
     "Leiva","Enrique Iglesias","Julio Iglesias","Omar Montes",
     "Sech","Boza","Joey Montana",
-    "Camila Cabello"
+    "Camila Cabello",
+    "Michael Jackson","Madonna","Ariana Grande","Taylor Swift","Rihanna","Lady Gaga","Katy Perry",
+    "Justin Bieber","The Weeknd","Ed Sheeran","Dua Lipa","Bruno Mars","Shawn Mendes","Harry Styles","Billie Eilish",
+    // 🎸 Rock / Alternativo
+    "Kurt Cobain (Nirvana)","Chris Martin (Coldplay)","Freddie Mercury (Queen)","Mick Jagger (The Rolling Stones)","Paul McCartney (The Beatles)","John Lennon",
+    // 🎤 R&B / Hip-Hop / Rap
+    "Eminem","Snoop Dogg","50 Cent","Kanye West","Travis Scott","Drake","Kendrick Lamar"
   ],
 };
 

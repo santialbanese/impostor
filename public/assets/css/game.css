@@ -103,6 +103,27 @@ label {
     text-align: left;
 }
 
+input[type="text"]::placeholder,
+input[type="number"]::placeholder {
+  color: rgba(0, 0, 0, 0.6);
+}
+
+input[type="text"]::-webkit-input-placeholder,
+input[type="number"]::-webkit-input-placeholder {
+  color:rgba(0, 0, 0, 0.6);
+}
+
+input[type="text"]:-ms-input-placeholder,
+input[type="number"]:-ms-input-placeholder {
+  color: rgba(0, 0, 0, 0.6);
+}
+
+input[type="text"]::-ms-input-placeholder,
+input[type="number"]::-ms-input-placeholder {
+  color: rgba(0, 0, 0, 0.6);
+}
+
+
 input[type="text"],
 input[type="number"] {
   width: 100%;
@@ -715,6 +736,18 @@ select {
   border: 1px solid rgba(255,255,255,.2);
   box-shadow: 0 8px 20px rgba(0,0,0,.25);
   object-fit: cover;
+}
+.word-description {
+  font-size: 0.9rem;
+  color: rgba(255,255,255,0.8);
+  margin: 10px 0;
+  padding: 8px 12px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 6px;
+  line-height: 1.4;
+  max-width: 300px;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 

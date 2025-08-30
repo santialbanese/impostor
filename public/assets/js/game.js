@@ -16,8 +16,7 @@ import {
   openChat,
   closeChatOverlay,
 } from "./overlay.js";
-import { getImageForItem } from "./images.js";
-
+import { getImageForItem, formatDescription } from "./images.js";
 // === Helpers para custom-selects (categoría / subtema) ===
 const CATEGORY_LABELS = {
   Fútbol: "⚽ Fútbol",
@@ -367,6 +366,11 @@ function handleOnlineGameStartSimul(gameData) {
 
   // NO pises con null si sos impostor
   if (gameData.word) state.gameWord = gameData.word;
+  
+  // NUEVO: Guardar descripción del servidor
+  if (gameData.wordDescription) {
+    state.gameWordDescription = gameData.wordDescription;
+  }
 
   // Guardar el tema (para saber la categoría al buscar imagen)
   state.currentTheme = gameData.theme || null;
@@ -377,7 +381,7 @@ function handleOnlineGameStartSimul(gameData) {
   // Determinar si soy impostor según el rol per-user
   state.isImpostorMe = gameData.role === "impostor";
 
-  // (Opcional) mantener índice/id si también vienen
+  // resto igual...
   if (typeof gameData.impostorIndex === "number") {
     state.impostorIndex = gameData.impostorIndex;
   } else if (gameData.impostorId) {
@@ -561,19 +565,56 @@ function showOnlineRoleSimul() {
   readyBtn.textContent = "Estoy listo";
   readyBtn.style.display = "inline-block";
 
-  // al final de showOnlineRoleSimul(), ANTES de ocultar/mostrar botones:
   if (!isImpostor) {
     const category = state.selectedOnlineCategory || "Fútbol";
     const subtopic = state.selectedOnlineSubtopic || "";
-    getImageForItem(state.gameWord, category, { subtopic }).then((url) => {
-      if (!url) return;
-      const img = document.createElement("img");
-      img.className = "word-image";
-      img.alt = state.gameWord;
-      img.src = url;
-      img.referrerPolicy = "no-referrer";
-      document.getElementById("gameCard")?.appendChild(img);
+    
+    // Crear contenedor para medios
+    const mediaContainer = document.createElement("div");
+    mediaContainer.className = "word-media";
+    
+    // Si tenemos descripción del servidor, usarla directamente
+    if (state.gameWordDescription) {
+      const desc = document.createElement("p");
+      desc.className = "word-description";
+      desc.textContent = state.gameWordDescription;
+      mediaContainer.appendChild(desc);
+    }
+    
+    // Buscar imagen (manteniendo compatibilidad con la versión anterior)
+    getImageForItem(state.gameWord, category, { subtopic }).then((result) => {
+      // Manejar tanto el formato nuevo {image, description} como el viejo (solo URL)
+      const imageUrl = (result && result.image) ? result.image : result;
+      
+      if (imageUrl && typeof imageUrl === 'string') {
+        const img = document.createElement("img");
+        img.className = "word-image";
+        img.alt = state.gameWord;
+        img.src = imageUrl;
+        img.referrerPolicy = "no-referrer";
+        
+        // Insertar imagen AL PRINCIPIO del contenedor
+        if (mediaContainer.firstChild) {
+          mediaContainer.insertBefore(img, mediaContainer.firstChild);
+        } else {
+          mediaContainer.appendChild(img);
+        }
+      }
+      
+      // Si no teníamos descripción del servidor pero la imagen trajo una, agregarla
+      if (!state.gameWordDescription && result && result.description && typeof formatDescription === 'function') {
+        const desc = document.createElement("p");
+        desc.className = "word-description";
+        desc.textContent = formatDescription(result.description, state.gameWord);
+        mediaContainer.appendChild(desc);
+      }
+    }).catch(error => {
+      console.warn('Error cargando imagen:', error);
     });
+    
+    // Agregar contenedor al DOM
+    const gameCard = document.getElementById("gameCard");
+    if (gameCard) gameCard.appendChild(mediaContainer);
   }
 }
 
@@ -1047,14 +1088,31 @@ function showPlayerRole() {
       ? state.selectedOnlineSubtopic || ""
       : state.selectedSubtopic || "";
 
-    getImageForItem(state.gameWord, category, { subtopic }).then((url) => {
-      if (!url) return;
+    // MODIFICACIÓN: usar el nuevo formato que devuelve imagen y descripción
+    getImageForItem(state.gameWord, category, { subtopic }).then((result) => {
+      if (!result?.image) return;
+      
+      // Crear contenedor para imagen y descripción
+      const mediaContainer = document.createElement("div");
+      mediaContainer.className = "word-media";
+      
+      // Agregar imagen
       const img = document.createElement("img");
       img.className = "word-image";
       img.alt = state.gameWord;
-      img.src = url;
+      img.src = result.image;
       img.referrerPolicy = "no-referrer";
-      $("#gameCard")?.appendChild(img);
+      mediaContainer.appendChild(img);
+      
+      // Agregar descripción si existe
+      if (result.description) {
+        const desc = document.createElement("p");
+        desc.className = "word-description";
+        desc.textContent = formatDescription(result.description, state.gameWord);
+        mediaContainer.appendChild(desc);
+      }
+      
+      $("#gameCard")?.appendChild(mediaContainer);
     });
   }
 }
